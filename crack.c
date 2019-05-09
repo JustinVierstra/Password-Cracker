@@ -8,13 +8,14 @@
 
 const int PASS_LEN=50;        // Maximum any password can be
 const int HASH_LEN=33;        // Length of MD5 hash strings
+char *contents;
 
 
 // Stucture to hold both a plaintext password and a hash.
 struct entry 
 {
-    char password[100];
-    char hash[100];
+    char *password;
+    char *hash;
 };
 
 int file_length(char *filename)
@@ -25,18 +26,18 @@ int file_length(char *filename)
     else return info.st_size;
 }
 
-int passcomp(const void *a, const void *b)
+int hashcomp(const void *a, const void *b)
 {
     struct entry *pa = (struct entry *)a;
     struct entry *pb = (struct entry *)b;
-    return strcmp(pa->password, pb->password);
+    return strcmp(pa->hash, pb->hash);
 }
 
-int hashcomp(const void *target, const void *elem)
+int hashfind(const void *target, const void *elem)
 {
     char *target_str = (char *)target;
     struct entry *pelem = (struct entry *)elem;
-    return strcmp(target_str, (*pelem).password);
+    return strcmp(target_str, (*pelem).hash);
 }
 
 // TODO
@@ -53,7 +54,7 @@ struct entry *read_dictionary(char *filename, int *size)
         exit(1);
     }
     
-    char *contents = malloc(filelength);
+    contents = malloc(filelength);
     fread(contents, 1, filelength, c);
     fclose(c);
     
@@ -66,35 +67,30 @@ struct entry *read_dictionary(char *filename, int *size)
             lines++;
         }
     }
-    printf("lines %d\n", lines);
+    //printf("lines %d\n", lines);
     
     // Allocate array of structs
-    struct entry *pass = malloc(lines * sizeof(struct entry));
+    struct entry *entries = malloc(lines * sizeof(struct entry));
 
-    char pword[20];
+    //char pword[20];
     
-    // Copy the first password into the pass array
-    strcpy(pass[0].password, &contents[0]);
-    pass[0].hash = md5(pass[0].password, strlen(pass[0].password));
+    // Copy the first password into the entries array
+    entries[0].password = &contents[0];
+    entries[0].hash = md5(entries[0].password, strlen(entries[0].password));
     
     int count = 1;
-    for (int i = 0; i < filelength; i++)
+    for (int i = 0; i < filelength - 1; i++)
     {
         if (contents[i] == '\0')
         {
-            char *nextpass = &contents[i] + 1;
-
-            strcpy(pass[count].password, nextpass);
-            pass[count].hash = md5(pass[count].password, strlen(pass[count].password));
+            entries[count].password = &contents[i+1];
+            entries[count].hash = md5(entries[count].password, strlen(entries[count].password));
             count++;
         }
     }
     
-    // Sort them by password
-    qsort(pass, lines, sizeof(struct entry), passcomp);
-    
     *size = lines;
-    return pass;
+    return entries;
 }
 
 
@@ -107,29 +103,37 @@ int main(int argc, char *argv[])
     }
     int dlen;
     // TODO: Read the dictionary file into an array of entry structures
-    struct entry *dict = read_dictionary(argv[1], &dlen);
+    struct entry *dict = read_dictionary(argv[2], &dlen);
     
-    // TODO: Sort the hashed dictionary using qsort.
-    // You will need to provide a comparison function.
-    //qsort(dict, 0, 0, NULL);
-
-    // TODO
-    // Open the hash file for reading.
-
-    // TODO
-    // For each hash, search for it in the dictionary using
-    // binary search.
-    // If you find it, get the corresponding plaintext dictionary word.
-    // Print out both the hash and word.
-    // Need only one loop. (Yay!)
-    char password[100];
-    struct entry *found = bsearch(password, dict, dlen, sizeof(struct entry), hashcomp);
-    if (found == NULL)
+    // Sort them by password
+    qsort(dict, dlen, sizeof(struct entry), hashcomp);
+    
+    FILE *h = fopen(argv[1], "r");
+    if (!h)
     {
-        printf("Not found\n");
+        printf("Can't open %s for reading\n", argv[1]);
+        exit(1);
     }
-    else
+    
+
+    
+    char line[33];
+    while(fgets(line,33,h)!=NULL)
     {
-        printf("Found %s %s\n", found->password, found->hash);
+        struct entry *found = bsearch(line, dict, dlen, sizeof(struct entry), hashfind);
+        if (found != NULL)
+        {
+            printf("Found %s %s\n", found->password, found->hash);
+            
+        }
     }
+    
+    for (int i=0; i <dlen; i++)
+    {
+        free(dict[i].hash);
+    }
+    
+    free(contents);
+    free(dict);
+    fclose(h);
 }
